@@ -1,21 +1,17 @@
 #coding: utf-8
-#import xlwt
-#import xlrd
-#import xlsxwriter
+
 import time 
 import os
 import re
 from hashlib import md5, sha1
 from zlib import crc32
 from openpyxl import Workbook
-from openpyxl.styles import colors, Font, Fill, NamedStyle
+from openpyxl.styles import colors, Font, Fill, NamedStyle 
 from openpyxl.styles import PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter, column_index_from_string
-from openpyxl import load_workbook
+from openpyxl import load_workbook 
 from openpyxl.writer.excel import ExcelWriter
 import xml.etree.ElementTree as ET
-
-EXCEL_NAME = 'NSR_VersionTool.xls'
 
 def getfileCreateTime(file):
     return time.ctime(os.path.getmtime(file))
@@ -131,8 +127,7 @@ class JoiFileVersion(object):
 
 #对整个表进行设置样式设计
 def setStyle(sheet, rows, columns):
-    #sheetnames = wb.get_sheet_names() #获得表单名字
-    #CurrentSheet = wb.get_sheet_by_name(sheetnames[0])
+    sheet.insert_rows(rows)
     # 字体
     font = Font(name='宋体', size=12, b=False)
 
@@ -146,10 +141,10 @@ def setStyle(sheet, rows, columns):
     fill = PatternFill('solid', fgColor='CFCFCF')
 
     # 对齐
-    alignment = Alignment(horizontal='center', vertical='center')
+    alignment = Alignment(horizontal='center', vertical='center', wrapText=True)
 
     #打包样式
-    sty = NamedStyle(name='sty', font=font, border=border, alignment=alignment, fill=fill)
+    sty = NamedStyle(name='sty', font=font, border=border, alignment=alignment) #, fill=fill)
 
     for r in range(3, rows+1):
         sheet.row_dimensions[rows].height = 45
@@ -157,6 +152,7 @@ def setStyle(sheet, rows, columns):
             if rows < 3 :
                 pass
             else:
+                sheet.column_dimensions[get_column_letter(c)].width = 15
                 try:
                     sheet.cell(r, c).style = sty 
                 except ValueError:
@@ -164,55 +160,45 @@ def setStyle(sheet, rows, columns):
                                                #ws['D5'].style = 'highlight'
                 
 
-'''
-def style():
-    ##赋值style为XFStyle()，初始化样式
-    style = xlwt.XFStyle()
-    #设置单元格内字体样式 
-    font = xlwt.Font()
-    font.name = '宋体'
-    font.bold = False
-    return style
-
-def write_excel():
-    wb = xlwt.Workbook()#创建工作�?
-    sheet = wb.add_sheet(u'sheet1', cell_overwrite_ok=True)#创建第一个sheet�? 第二参数用于确认同一个cell单元是否可以重设�?
+def setDevCategory(keyName):
     #初始化表头列�?
-    tb_head = [
-    u'装置类别',
-    u'装置型号',
-    u'适用硬件归档�?',
-    u'装置应用型号',
-    u'程序包joi',
-    u'ICD文件�?',
-    u'ICD文件版本',
-    u'ICD文件CRC32校验�?',
-    u'ICD文件MD5校验�?',
-    u'显示软件版本',
-    u'显示生成日期',
-    u'打包日期',
-    u'管理序号'
-    ]
+    dictCategory = {
+        #   key      : #value
+        u"NSR-3611"  : u"线路保护",
+        u"NSR-3620"  : u"电容器保护",
+        u"NSR-3670"  : u"电抗器保护",
+        u"NSR-3697"  : u"所用变保护",
+        u"NSR-3613"  : u"母线保护",
+        u"NSR-3641"  : u"备自投",
+        u"NSR-3641RF" : u"备自投",
+        u"NS-3641"   : u"备自投",
+        u"NSR-378LR" : u"变压器后备保护"
+    }
+    for key in dictCategory:
+        if keyName == key:
+            return dictCategory[key]
+    return "NULL"
 
-    for i, item in enumerate(tb_head):
-        sheet.write(0, i, item, style())
-
-    return wb
-'''
 
 if __name__ == '__main__':
-    bookName = u"NSR-3641A-DA-G-A0010备用电源自投装置配套的软件执行代码、软件版本及功能说明.xlsx"
-    workbook = load_workbook(bookName)
+    print("Starting......")
+    bookName = searchFile("xlsx" or 'xls')
+    patten = re.compile(u'[A-Za-z0-9-]')
+    manufactureName = ''.join(patten.findall(bookName[0].strip('.xlsx'or'.xls')))
+    deviceName = re.sub(u'-A\d+', '', manufactureName) #去掉硬件编码
+    seriesName = deviceName.split('-')[0] +'-'+deviceName.split('-')[1].strip('A')
+    #取sheet
+    workbook = load_workbook(bookName[0])
     sheetnames = workbook.get_sheet_names() #获得表单名字
     CurrentSheet = workbook.get_sheet_by_name(sheetnames[0])
-    config = JoiFileVersion('config.txt')
-    CurrentSheet.insert_rows(3)
     setStyle(CurrentSheet, 3, column_index_from_string('AN')+1) #列号转换为数字
-
-    CurrentSheet['A3'] = "备自投"
-    CurrentSheet['B3'] = "NSR-3641"
-    CurrentSheet['C3'] = "NSR-3641A-DA-G_A0010"
-    CurrentSheet['D3'] = "NSR-3641A-DA-G"
+    #取config处理的方法
+    config = JoiFileVersion('config.txt')
+    
+    CurrentSheet['A3'] = setDevCategory(seriesName)
+    CurrentSheet['B3'] = seriesName
+    CurrentSheet['C3'] = manufactureName    #硬件型号
+    CurrentSheet['D3'] = deviceName     #应用子型号
     CurrentSheet['E3'] = " \n".join(searchFile("joi"))
     CurrentSheet['F3'] = " \n".join(searchFile("icd"))
     icdVersion = [getICDVersion(files) for files in searchFile("icd")] #多个文件创建时间需要合并打开?
@@ -229,16 +215,14 @@ if __name__ == '__main__':
     CurrentSheet['M3'] = " /\n".join(joiCreateTime)
     CurrentSheet['N3'] = config.getSubq()
     CurrentSheet['O3'] = config.getCrc()
-
     CurrentSheet['Q3'] = config.getPPCVersion()
     CurrentSheet['R3'] = config.getPPCDate()
     CurrentSheet['S3'] = config.getPPCCrc()
 
-
-
     try:    
-        workbook.save(bookName) 
+        workbook.save(bookName[0]) 
         workbook.close()
     except Exception as err:
         print("文件保存异常 %s"%(err))
+
     print('Succeed!')
